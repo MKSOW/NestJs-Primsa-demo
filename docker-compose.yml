@@ -1,0 +1,29 @@
+version: '3.8'                                                  
+                                                                                                                                             
+  services:
+    postgres:                                                                                                                                
+      image: postgres:15                                          
+      container_name: nest_prisma_pg
+      restart: always
+      environment:                                                                                                                           
+        POSTGRES_USER: postgres
+        POSTGRES_PASSWORD: postgres                                                                                                          
+        POSTGRES_DB: nestdb                                       
+      ports:
+        - "5432:5432"
+      volumes:
+        - pgdata:/var/lib/postgresql/data
+                                                                                                                                             
+    api:
+      build: .                                                                                                                               
+      container_name: nest_api                                    
+      restart: always                                                                                                                        
+      ports:
+        - "3000:3000"                                                                                                                        
+      environment:                                                
+        DATABASE_URL: postgresql://postgres:postgres@postgres:5432/nestdb
+      depends_on:
+        - postgres
+                                                                                                                                             
+  volumes:
+    pgdata: 
