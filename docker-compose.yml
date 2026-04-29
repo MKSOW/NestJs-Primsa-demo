@@ -19,8 +19,9 @@ services:
     container_name: nest_api
     restart: always
     ports:
-      - "3000:3000"
+      - "3003:3003"
     environment:
+      PORT: 3003
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/nestdb
     depends_on:
       - postgres
