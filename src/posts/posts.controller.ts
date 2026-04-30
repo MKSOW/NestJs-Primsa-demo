@@ -4,16 +4,14 @@ import {
   Post,
   Patch,
   Delete,
-  Param,
   Body,
-  Query,
   HttpCode,
-  ParseIntPipe,
 } from '@nestjs/common';
 import { PostsService } from './posts.service';
 import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
 import { PaginateDto } from '../users/dto/paginate.dto';
+import { ParamId, Paginate } from '../common/decorators';
 
 @Controller('posts')
 export class PostsController {
@@ -26,38 +24,38 @@ export class PostsController {
   }
 
   @Get()
-  findAll(@Query() pagination: PaginateDto) {
+  findAll(@Paginate() pagination: PaginateDto) {
     return this.postsService.findAll(pagination);
   }
 
   // Doit être AVANT @Get(':id') — sinon NestJS interprète "trash" comme un id
   @Get('trash')
-  findTrashed(@Query() pagination: PaginateDto) {
+  findTrashed(@Paginate() pagination: PaginateDto) {
     return this.postsService.findTrashed(pagination);
   }
 
   @Get('trash/:id')
-  findOneTrashed(@Param('id', ParseIntPipe) id: number) {
+  findOneTrashed(@ParamId() id: number) {
     return this.postsService.findOneTrashed(id);
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
+  findOne(@ParamId() id: number) {
     return this.postsService.findOne(id);
   }
 
   @Patch(':id')
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdatePostDto) {
+  update(@ParamId() id: number, @Body() dto: UpdatePostDto) {
     return this.postsService.update(id, dto);
   }
 
   @Delete(':id')
-  remove(@Param('id', ParseIntPipe) id: number) {
+  remove(@ParamId() id: number) {
     return this.postsService.remove(id);
   }
 
   @Patch(':id/restore')
-  restore(@Param('id', ParseIntPipe) id: number) {
+  restore(@ParamId() id: number) {
     return this.postsService.restore(id);
   }
 }

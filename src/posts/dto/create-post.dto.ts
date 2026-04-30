@@ -10,14 +10,17 @@ import {
   IsArray,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { Trim } from '../../common/decorators';
 
 export class CreatePostDto {
+  @Trim()
   @IsString({ message: 'Le titre doit être une chaîne de caractères' })
   @IsNotEmpty({ message: 'Le titre est obligatoire' })
   @MinLength(3, { message: 'Le titre doit contenir au moins 3 caractères' })
   @MaxLength(200, { message: 'Le titre ne peut pas dépasser 200 caractères' })
   title!: string;
 
+  @Trim()
   @IsString({ message: 'Le contenu doit être une chaîne de caractères' })
   @IsNotEmpty({ message: 'Le contenu est obligatoire' })
   content!: string;

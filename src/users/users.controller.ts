@@ -4,16 +4,15 @@ import {
   Post,
   Patch,
   Delete,
-  Param,
   Body,
   Query,
   HttpCode,
-  ParseIntPipe,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { PaginateDto } from './dto/paginate.dto';
+import { ParamId, Paginate } from '../common/decorators';
 
 @Controller('users')
 export class UsersController {
@@ -26,27 +25,27 @@ export class UsersController {
   }
 
   @Get()
-  findAll(@Query() pagination: PaginateDto) {
+  findAll(@Paginate() pagination: PaginateDto) {
     return this.usersService.findAll(pagination);
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
+  findOne(@ParamId() id: number) {
     return this.usersService.findOne(id);
   }
 
   @Patch(':id')
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateUserDto) {
+  update(@ParamId() id: number, @Body() dto: UpdateUserDto) {
     return this.usersService.update(id, dto);
   }
 
   @Delete(':id')
-  remove(@Param('id', ParseIntPipe) id: number) {
+  remove(@ParamId() id: number) {
     return this.usersService.remove(id);
   }
 
   @Patch(':id/restore')
-  restore(@Param('id', ParseIntPipe) id: number) {
+  restore(@ParamId() id: number) {
     return this.usersService.restore(id);
   }
 }
