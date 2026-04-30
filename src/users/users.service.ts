@@ -31,25 +31,58 @@ export class UsersService {
   async findAll(pagination: PaginateDto) {
     const { limit = 10, offset = 0 } = pagination;
     const [data, total] = await Promise.all([
-      this.prisma.user.findMany({ skip: offset, take: limit }),
-      this.prisma.user.count(),
+      this.prisma.user.findMany({
+        where: { deletedAt: null },
+        skip: offset,
+        take: limit,
+      }),
+      this.prisma.user.count({ where: { deletedAt: null } }),
     ]);
     return { data, total, limit, offset };
   }
 
   async findOne(id: number) {
     const user = await this.prisma.user.findUnique({ where: { id } });
-    if (!user) throw new NotFoundException(`User #${id} introuvable`);
+    if (!user || user.deletedAt) {
+      throw new NotFoundException(`User #${id} introuvable`);
+    }
     return user;
   }
 
   async update(id: number, dto: UpdateUserDto) {
     await this.findOne(id);
-    return this.prisma.user.update({ where: { id }, data: dto });
+    try {
+      return await this.prisma.user.update({ where: { id }, data: dto });
+    } catch (e: unknown) {
+      if (
+        typeof e === 'object' &&
+        e !== null &&
+        'code' in e &&
+        e.code === 'P2002'
+      ) {
+        throw new ConflictException('Cet email est déjà utilisé');
+      }
+      throw e;
+    }
   }
 
   async remove(id: number) {
     await this.findOne(id);
-    return this.prisma.user.delete({ where: { id } });
+    return this.prisma.user.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+  }
+
+  async restore(id: number) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) throw new NotFoundException(`User #${id} introuvable`);
+    if (!user.deletedAt) {
+      throw new ConflictException(`User #${id} n'est pas supprimé`);
+    }
+    return this.prisma.user.update({
+      where: { id },
+      data: { deletedAt: null },
+    });
   }
 }

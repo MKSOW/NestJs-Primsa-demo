@@ -24,10 +24,8 @@ export class PostsService {
   async create(dto: CreatePostDto) {
     const { categoryIds, authorId, ...rest } = dto;
 
-    const authorExists = await this.prisma.user.findUnique({
-      where: { id: authorId },
-    });
-    if (!authorExists) {
+    const author = await this.prisma.user.findUnique({ where: { id: authorId } });
+    if (!author || author.deletedAt) {
       throw new NotFoundException(`Auteur #${authorId} introuvable`);
     }
 
@@ -47,12 +45,13 @@ export class PostsService {
     const { limit = 10, offset = 0 } = pagination;
     const [data, total] = await Promise.all([
       this.prisma.post.findMany({
+        where: { deletedAt: null },
         skip: offset,
         take: limit,
         include: POST_INCLUDE,
         orderBy: { createdAt: 'desc' },
       }),
-      this.prisma.post.count(),
+      this.prisma.post.count({ where: { deletedAt: null } }),
     ]);
     return { data, total, limit, offset };
   }
@@ -62,7 +61,9 @@ export class PostsService {
       where: { id },
       include: POST_INCLUDE,
     });
-    if (!post) throw new NotFoundException(`Post #${id} introuvable`);
+    if (!post || post.deletedAt) {
+      throw new NotFoundException(`Post #${id} introuvable`);
+    }
     return post;
   }
 
@@ -71,10 +72,8 @@ export class PostsService {
     const { categoryIds, authorId, ...rest } = dto;
 
     if (authorId !== undefined) {
-      const authorExists = await this.prisma.user.findUnique({
-        where: { id: authorId },
-      });
-      if (!authorExists) {
+      const author = await this.prisma.user.findUnique({ where: { id: authorId } });
+      if (!author || author.deletedAt) {
         throw new NotFoundException(`Auteur #${authorId} introuvable`);
       }
     }
@@ -84,7 +83,6 @@ export class PostsService {
       data: {
         ...rest,
         ...(authorId !== undefined && { author: { connect: { id: authorId } } }),
-        // set remplace toutes les catégories existantes par les nouvelles
         ...(categoryIds !== undefined && {
           categories: { set: categoryIds.map((cid) => ({ id: cid })) },
         }),
@@ -95,6 +93,52 @@ export class PostsService {
 
   async remove(id: number) {
     await this.findOne(id);
-    return this.prisma.post.delete({ where: { id }, include: POST_INCLUDE });
+    return this.prisma.post.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+      include: POST_INCLUDE,
+    });
+  }
+
+  async findTrashed(pagination: PaginateDto) {
+    const { limit = 10, offset = 0 } = pagination;
+    const [data, total] = await Promise.all([
+      this.prisma.post.findMany({
+        where: { deletedAt: { not: null } },
+        skip: offset,
+        take: limit,
+        include: POST_INCLUDE,
+        orderBy: { deletedAt: 'desc' },
+      }),
+      this.prisma.post.count({ where: { deletedAt: { not: null } } }),
+    ]);
+    return { data, total, limit, offset };
+  }
+
+  async findOneTrashed(id: number) {
+    const post = await this.prisma.post.findUnique({
+      where: { id },
+      include: POST_INCLUDE,
+    });
+    if (!post || !post.deletedAt) {
+      throw new NotFoundException(`Post supprimé #${id} introuvable`);
+    }
+    return post;
+  }
+
+  async restore(id: number) {
+    const post = await this.prisma.post.findUnique({
+      where: { id },
+      include: POST_INCLUDE,
+    });
+    if (!post) throw new NotFoundException(`Post #${id} introuvable`);
+    if (!post.deletedAt) {
+      throw new ConflictException(`Post #${id} n'est pas supprimé`);
+    }
+    return this.prisma.post.update({
+      where: { id },
+      data: { deletedAt: null },
+      include: POST_INCLUDE,
+    });
   }
 }

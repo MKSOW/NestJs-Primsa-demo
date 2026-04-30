@@ -30,6 +30,17 @@ export class PostsController {
     return this.postsService.findAll(pagination);
   }
 
+  // Doit être AVANT @Get(':id') — sinon NestJS interprète "trash" comme un id
+  @Get('trash')
+  findTrashed(@Query() pagination: PaginateDto) {
+    return this.postsService.findTrashed(pagination);
+  }
+
+  @Get('trash/:id')
+  findOneTrashed(@Param('id', ParseIntPipe) id: number) {
+    return this.postsService.findOneTrashed(id);
+  }
+
   @Get(':id')
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.postsService.findOne(id);
@@ -43,5 +54,10 @@ export class PostsController {
   @Delete(':id')
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.postsService.remove(id);
+  }
+
+  @Patch(':id/restore')
+  restore(@Param('id', ParseIntPipe) id: number) {
+    return this.postsService.restore(id);
   }
 }
