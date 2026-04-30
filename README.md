@@ -112,6 +112,7 @@ prisma/
 ## Modèle de données
 
 ```prisma
+// Un utilisateur peut avoir plusieurs posts
 model User {
   id        Int      @id @default(autoincrement())
   firstname String
@@ -119,7 +120,73 @@ model User {
   email     String   @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  posts     Post[]
 }
+
+// Un post appartient à un auteur (User) et peut avoir plusieurs catégories
+model Post {
+  id         Int        @id @default(autoincrement())
+  title      String
+  content    String
+  published  Boolean    @default(false)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  authorId   Int
+  author     User       @relation(fields: [authorId], references: [id])
+  categories Category[]
+}
+
+// Une catégorie peut être assignée à plusieurs posts (many-to-many implicite)
+model Category {
+  id    Int    @unique
+  name  String @unique
+  posts Post[]
+}
+```
+
+### Schéma des relations
+
+```
+User  ──< Post >──< Category
+(1)      (many)   (many)
+```
+
+- **User → Post** : relation **one-to-many** (un utilisateur écrit plusieurs posts)
+- **Post ↔ Category** : relation **many-to-many** (Prisma génère automatiquement une table de jonction `_CategoryToPost`)
+
+---
+
+## Structure du projet (mise à jour)
+
+```
+src/
+├── main.ts
+├── app.module.ts
+├── prisma/
+│   ├── prisma.module.ts
+│   └── prisma.service.ts
+├── users/
+│   ├── dto/
+│   │   ├── create-user.dto.ts
+│   │   ├── update-user.dto.ts
+│   │   └── paginate.dto.ts        # Réutilisé par posts et categories
+│   ├── users.controller.ts
+│   ├── users.service.ts
+│   └── users.module.ts
+├── posts/
+│   ├── dto/
+│   │   ├── create-post.dto.ts
+│   │   └── update-post.dto.ts
+│   ├── posts.controller.ts
+│   ├── posts.service.ts
+│   └── posts.module.ts
+└── categories/
+    ├── dto/
+    │   ├── create-category.dto.ts
+    │   └── update-category.dto.ts
+    ├── categories.controller.ts
+    ├── categories.service.ts
+    └── categories.module.ts
 ```
 
 ---
@@ -208,6 +275,125 @@ Réponse `200` avec l'objet supprimé, ou `404` si introuvable.
 
 ---
 
+---
+
+### Posts
+
+#### Créer un post
+
+```http
+POST /posts
+Content-Type: application/json
+
+{
+  "title": "Mon premier article",
+  "content": "Contenu de l'article...",
+  "published": true,
+  "authorId": 1,
+  "categoryIds": [1, 2]
+}
+```
+
+Réponse `201` — le post avec son auteur et ses catégories inclus (jointure) :
+```json
+{
+  "id": 1,
+  "title": "Mon premier article",
+  "content": "Contenu de l'article...",
+  "published": true,
+  "authorId": 1,
+  "author": { "id": 1, "firstname": "Mamadou", "lastname": "Diallo", "email": "mamadou@example.com" },
+  "categories": [{ "id": 1, "name": "Tech" }, { "id": 2, "name": "NestJS" }],
+  "createdAt": "...",
+  "updatedAt": "..."
+}
+```
+
+#### Lister tous les posts (avec pagination)
+
+```http
+GET /posts?limit=10&offset=0
+```
+
+#### Récupérer un post par ID
+
+```http
+GET /posts/:id
+```
+
+#### Mettre à jour un post (champs optionnels)
+
+```http
+PATCH /posts/:id
+Content-Type: application/json
+
+{
+  "published": false,
+  "categoryIds": [3]
+}
+```
+
+> `categoryIds` **remplace** toutes les catégories existantes du post par les nouvelles.
+
+#### Supprimer un post
+
+```http
+DELETE /posts/:id
+```
+
+---
+
+### Categories
+
+#### Créer une catégorie
+
+```http
+POST /categories
+Content-Type: application/json
+
+{ "name": "Tech" }
+```
+
+Réponse `201` — la catégorie avec la liste de ses posts :
+```json
+{
+  "id": 1,
+  "name": "Tech",
+  "posts": []
+}
+```
+
+#### Lister toutes les catégories
+
+```http
+GET /categories?limit=10&offset=0
+```
+
+Chaque catégorie inclut ses posts et l'auteur de chaque post (double jointure).
+
+#### Récupérer une catégorie par ID
+
+```http
+GET /categories/:id
+```
+
+#### Mettre à jour une catégorie
+
+```http
+PATCH /categories/:id
+Content-Type: application/json
+
+{ "name": "Backend" }
+```
+
+#### Supprimer une catégorie
+
+```http
+DELETE /categories/:id
+```
+
+---
+
 ## Validation automatique des données
 
 NestJS est configuré avec `ValidationPipe` global :
@@ -216,10 +402,12 @@ NestJS est configuré avec `ValidationPipe` global :
 - `forbidNonWhitelisted: true` — une erreur est renvoyée si un champ inconnu est envoyé
 - `transform: true` — les types sont automatiquement convertis (ex: `"1"` → `1`)
 
-Règles de validation sur `CreateUserDto` :
-- `firstname` : string, min 2 chars, max 100 chars, obligatoire
-- `lastname` : string, min 2 chars, max 100 chars, obligatoire
-- `email` : format email valide, max 150 chars, unique en BDD
+Règles de validation sur `CreateUserDto` et les autres DTOs :
+**User** : `firstname` (min 2 / max 100), `lastname` (min 2 / max 100), `email` (format valide, unique)
+
+**Post** : `title` (min 3 / max 200), `content` (non vide), `authorId` (entier positif), `categoryIds` (tableau d'entiers, optionnel), `published` (booléen, optionnel)
+
+**Category** : `name` (min 2 / max 100, unique)
 
 ---
 
