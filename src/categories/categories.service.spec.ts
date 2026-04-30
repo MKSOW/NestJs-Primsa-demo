@@ -1,54 +1,37 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { CategoriesService } from './categories.service';
-import { PrismaService } from '../prisma/prisma.service';
+import {
+  setupTestDb,
+  teardownTestDb,
+  cleanDatabase,
+  TestContext,
+} from '../test/db.helper';
 
-const mockCategory = {
-  id: 1,
-  name: 'Tech',
-  posts: [],
-};
-
-const mockPrisma = {
-  category: {
-    create: jest.fn(),
-    findMany: jest.fn(),
-    findUnique: jest.fn(),
-    update: jest.fn(),
-    delete: jest.fn(),
-    count: jest.fn(),
-  },
-};
-
-describe('CategoriesService', () => {
+describe('CategoriesService (real DB)', () => {
+  let ctx: TestContext;
   let service: CategoriesService;
 
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        CategoriesService,
-        { provide: PrismaService, useValue: mockPrisma },
-      ],
-    }).compile();
+  beforeAll(async () => {
+    ctx = await setupTestDb();
+    service = ctx.module.get<CategoriesService>(CategoriesService);
+  }, 120_000);
 
-    service = module.get<CategoriesService>(CategoriesService);
-    jest.clearAllMocks();
-  });
+  afterAll(() => teardownTestDb(ctx));
+
+  beforeEach(() => cleanDatabase(ctx.prisma));
 
   // ─── create ───────────────────────────────────────────────────────────────
 
   describe('create()', () => {
     it('crée et retourne une catégorie', async () => {
-      mockPrisma.category.create.mockResolvedValue(mockCategory);
       const result = await service.create({ name: 'Tech' });
-      expect(result).toEqual(mockCategory);
-      expect(mockPrisma.category.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: { name: 'Tech' } }),
-      );
+      expect(result.name).toBe('Tech');
+      expect(result.id).toBeDefined();
+      expect(result.posts).toEqual([]);
     });
 
-    it('lève ConflictException si nom déjà utilisé (P2002)', async () => {
-      mockPrisma.category.create.mockRejectedValue({ code: 'P2002' });
+    it('lève ConflictException si nom déjà utilisé (contrainte réelle)', async () => {
+      await service.create({ name: 'Tech' });
       await expect(service.create({ name: 'Tech' })).rejects.toThrow(ConflictException);
     });
   });
@@ -57,12 +40,21 @@ describe('CategoriesService', () => {
 
   describe('findAll()', () => {
     it('retourne les catégories paginées', async () => {
-      mockPrisma.category.findMany.mockResolvedValue([mockCategory]);
-      mockPrisma.category.count.mockResolvedValue(1);
+      await service.create({ name: 'Backend' });
+      await service.create({ name: 'Frontend' });
 
       const result = await service.findAll({ limit: 5, offset: 0 });
 
-      expect(result).toEqual({ data: [mockCategory], total: 1, limit: 5, offset: 0 });
+      expect(result.total).toBe(2);
+      expect(result.data).toHaveLength(2);
+      expect(result.limit).toBe(5);
+      expect(result.offset).toBe(0);
+    });
+
+    it('utilise limit=10 et offset=0 par défaut', async () => {
+      const result = await service.findAll({});
+      expect(result.limit).toBe(10);
+      expect(result.offset).toBe(0);
     });
   });
 
@@ -70,14 +62,14 @@ describe('CategoriesService', () => {
 
   describe('findOne()', () => {
     it('retourne la catégorie', async () => {
-      mockPrisma.category.findUnique.mockResolvedValue(mockCategory);
-      const result = await service.findOne(1);
-      expect(result).toEqual(mockCategory);
+      const created = await service.create({ name: 'DevOps' });
+      const found = await service.findOne(created.id);
+      expect(found.id).toBe(created.id);
+      expect(found.name).toBe('DevOps');
     });
 
     it('lève NotFoundException si catégorie inexistante', async () => {
-      mockPrisma.category.findUnique.mockResolvedValue(null);
-      await expect(service.findOne(99)).rejects.toThrow(NotFoundException);
+      await expect(service.findOne(99999)).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -85,23 +77,19 @@ describe('CategoriesService', () => {
 
   describe('update()', () => {
     it('met à jour le nom', async () => {
-      const updated = { ...mockCategory, name: 'Backend' };
-      mockPrisma.category.findUnique.mockResolvedValue(mockCategory);
-      mockPrisma.category.update.mockResolvedValue(updated);
-
-      const result = await service.update(1, { name: 'Backend' });
-      expect(result).toEqual(updated);
+      const cat = await service.create({ name: 'Ancien' });
+      const updated = await service.update(cat.id, { name: 'Nouveau' });
+      expect(updated.name).toBe('Nouveau');
     });
 
     it('lève NotFoundException si catégorie inexistante', async () => {
-      mockPrisma.category.findUnique.mockResolvedValue(null);
-      await expect(service.update(99, { name: 'X' })).rejects.toThrow(NotFoundException);
+      await expect(service.update(99999, { name: 'X' })).rejects.toThrow(NotFoundException);
     });
 
-    it('lève ConflictException si nom déjà utilisé (P2002)', async () => {
-      mockPrisma.category.findUnique.mockResolvedValue(mockCategory);
-      mockPrisma.category.update.mockRejectedValue({ code: 'P2002' });
-      await expect(service.update(1, { name: 'Existant' })).rejects.toThrow(ConflictException);
+    it('lève ConflictException si nom déjà utilisé (contrainte réelle)', async () => {
+      const c1 = await service.create({ name: 'Pris' });
+      const c2 = await service.create({ name: 'Libre' });
+      await expect(service.update(c2.id, { name: c1.name })).rejects.toThrow(ConflictException);
     });
   });
 
@@ -109,19 +97,16 @@ describe('CategoriesService', () => {
 
   describe('remove()', () => {
     it('supprime définitivement la catégorie', async () => {
-      mockPrisma.category.findUnique.mockResolvedValue(mockCategory);
-      mockPrisma.category.delete.mockResolvedValue(mockCategory);
+      const cat = await service.create({ name: 'À supprimer' });
+      await service.remove(cat.id);
 
-      const result = await service.remove(1);
-      expect(result).toEqual(mockCategory);
-      expect(mockPrisma.category.delete).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: 1 } }),
-      );
+      // La ligne doit avoir disparu de la base
+      const raw = await ctx.prisma.category.findUnique({ where: { id: cat.id } });
+      expect(raw).toBeNull();
     });
 
     it('lève NotFoundException si catégorie inexistante', async () => {
-      mockPrisma.category.findUnique.mockResolvedValue(null);
-      await expect(service.remove(99)).rejects.toThrow(NotFoundException);
+      await expect(service.remove(99999)).rejects.toThrow(NotFoundException);
     });
   });
 });

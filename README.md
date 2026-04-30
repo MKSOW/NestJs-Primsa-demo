@@ -411,13 +411,115 @@ Règles de validation sur `CreateUserDto` et les autres DTOs :
 
 ---
 
+## Tests avec vraie base de données (Testcontainers)
+
+### Philosophie : pourquoi pas de mocks ?
+
+Les tests utilisent **Testcontainers** pour démarrer un vrai conteneur PostgreSQL éphémère à chaque suite de tests, au lieu de mocker PrismaService.
+
+**Pourquoi cette approche est supérieure aux mocks :**
+
+| Mock Prisma | Vraie BDD (Testcontainers) |
+|---|---|
+| `mockResolvedValue({...})` retourne ce qu'on lui dit | Exécute la vraie requête SQL |
+| Ne vérifie pas les contraintes du schéma | La contrainte `@unique` est vraiment testée |
+| Si on retire `@unique` du schéma, le test continue de passer | Le test échoue immédiatement |
+| Les relations FK ne sont pas vérifiées | Les FK et les cascades sont réelles |
+
+> **Exemple concret** : le test `lève ConflictException si email déjà utilisé` avec un mock se contente de simuler l'erreur P2002. Avec Testcontainers, si un développeur retire accidentellement `@unique` du champ `email` dans le schéma Prisma, le test **détecte vraiment la régression**.
+
+### Prérequis pour lancer les tests
+
+- **Docker** doit être démarré (Testcontainers démarre un conteneur automatiquement)
+- Aucune base de données locale nécessaire — tout est géré par Testcontainers
+
+### Lancer les tests
+
+```bash
+npm test                    # Tous les tests (Jest)
+npm run test:cov            # Avec couverture de code
+```
+
+```bash
+# Lancer un seul fichier de test (plus rapide pendant le développement)
+npx jest --testPathPatterns="users.service.spec" --runInBand
+npx jest --testPathPatterns="users.controller.spec" --runInBand
+npx jest --testPathPatterns="posts.service.spec" --runInBand
+npx jest --testPathPatterns="categories.service.spec" --runInBand
+```
+
+> `--runInBand` force l'exécution séquentielle des tests dans un même processus Node.js, ce qui évite les conflits entre conteneurs Docker lancés en parallèle.
+
+### Architecture des tests
+
+```
+src/
+├── test/
+│   └── db.helper.ts              # Helper partagé — démarre le conteneur, applique les migrations
+├── app.controller.spec.ts        # Test simple (pas de BDD — endpoint /health)
+├── users/
+│   ├── users.service.spec.ts     # Tests service Users (vraie BDD)
+│   └── users.controller.spec.ts  # Tests contrôleur Users (vraie BDD)
+├── posts/
+│   └── posts.service.spec.ts     # Tests service Posts (vraie BDD)
+└── categories/
+    └── categories.service.spec.ts # Tests service Categories (vraie BDD)
+```
+
+Le fichier `src/test/db.helper.ts` expose trois fonctions réutilisées dans chaque suite :
+
+| Fonction | Rôle | Appelée dans |
+|---|---|---|
+| `setupTestDb()` | Démarre le conteneur PostgreSQL, applique les migrations, boot NestJS | `beforeAll` |
+| `teardownTestDb(ctx)` | Arrête le module NestJS et le conteneur | `afterAll` |
+| `cleanDatabase(prisma)` | Vide toutes les tables (ordre FK respecté) | `beforeEach` |
+
+### Cycle de vie d'un test (suites avec BDD)
+
+```
+beforeAll  → démarre 1 conteneur PostgreSQL (postgres:16-alpine)
+           → npx prisma migrate deploy (applique les migrations réelles)
+           → boot du module NestJS de test
+
+beforeEach → cleanDatabase() → vide post → user → category
+             (garantit l'isolation entre chaque it())
+
+afterAll   → module.close() + container.stop()
+```
+
+### Couverture des scénarios testés
+
+**UsersService & UsersController** :
+- `create` — création réussie, `ConflictException` si email dupliqué (contrainte `@unique` réelle)
+- `findAll` — pagination, exclusion des soft-supprimés
+- `findOne` — succès, `NotFoundException` si inexistant ou soft-supprimé
+- `update` — mise à jour réussie, `NotFoundException`, `ConflictException` sur email dupliqué
+- `remove` — soft delete (marque `deletedAt`), `NotFoundException`
+- `restore` — remet `deletedAt` à null, `NotFoundException`, `ConflictException` si déjà actif
+
+**PostsService** :
+- `create` — succès avec auteur, `NotFoundException` si auteur inexistant ou soft-supprimé
+- `findAll` / `findTrashed` — pagination, séparation actifs/supprimés
+- `findOne` / `findOneTrashed` — accès ciblé, erreurs correctes
+- `remove` — soft delete, `NotFoundException`
+- `restore` — `NotFoundException`, `ConflictException` si déjà actif
+
+**CategoriesService** :
+- `create` — succès, `ConflictException` si nom dupliqué
+- `findAll` — pagination correcte
+- `findOne` — succès, `NotFoundException`
+- `update` — succès, `NotFoundException`, `ConflictException` sur nom dupliqué
+- `remove` — suppression définitive (hard delete), `NotFoundException`
+
+---
+
 ## Scripts disponibles
 
 ```bash
 npm run start:dev     # Démarrage en mode watch (rechargement automatique)
 npm run start:prod    # Démarrage en production (depuis /dist)
 npm run build         # Compilation TypeScript → JavaScript
-npm run test          # Tests unitaires (Jest)
+npm run test          # Tests (Jest + Testcontainers, ~30s au démarrage)
 npm run test:e2e      # Tests end-to-end
 npm run lint          # Vérification du code (ESLint + Prettier)
 ```
@@ -440,3 +542,5 @@ npx prisma generate                   # Régénérer le client Prisma
 | `404 Not Found` | ID inexistant | Vérifier l'ID dans la BDD |
 | `400 Bad Request` | Champ manquant ou invalide | Lire le message d'erreur de validation |
 | `P1001` Prisma | Impossible de joindre la BDD | Vérifier `DATABASE_URL` dans `.env` |
+| Tests lents (~30s) | Testcontainers tire l'image Docker au premier run | Normal — Docker met en cache l'image ensuite |
+| `Cannot connect to the Docker daemon` | Docker n'est pas démarré | Démarrer Docker Desktop / le service Docker |

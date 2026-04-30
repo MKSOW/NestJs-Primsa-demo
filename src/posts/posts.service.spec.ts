@@ -1,88 +1,52 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { PostsService } from './posts.service';
-import { PrismaService } from '../prisma/prisma.service';
+import { UsersService } from '../users/users.service';
+import {
+  setupTestDb,
+  teardownTestDb,
+  cleanDatabase,
+  TestContext,
+} from '../test/db.helper';
 
-const mockAuthor = {
-  id: 1,
-  firstname: 'Mamadou',
-  lastname: 'Diallo',
-  email: 'mamadou@test.com',
-  createdAt: new Date(),
-  updatedAt: new Date(),
-  deletedAt: null,
-};
-
-const mockPost = {
-  id: 1,
-  title: 'Mon article',
-  content: 'Contenu ici',
-  published: false,
-  authorId: 1,
-  author: { id: 1, firstname: 'Mamadou', lastname: 'Diallo', email: 'mamadou@test.com' },
-  categories: [],
-  createdAt: new Date(),
-  updatedAt: new Date(),
-  deletedAt: null,
-};
-
-const mockPrisma = {
-  user: { findUnique: jest.fn() },
-  post: {
-    create: jest.fn(),
-    findMany: jest.fn(),
-    findUnique: jest.fn(),
-    update: jest.fn(),
-    count: jest.fn(),
-  },
-};
-
-describe('PostsService', () => {
+describe('PostsService (real DB)', () => {
+  let ctx: TestContext;
   let service: PostsService;
+  let usersService: UsersService;
 
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        PostsService,
-        { provide: PrismaService, useValue: mockPrisma },
-      ],
-    }).compile();
+  beforeAll(async () => {
+    ctx = await setupTestDb();
+    service = ctx.module.get<PostsService>(PostsService);
+    usersService = ctx.module.get<UsersService>(UsersService);
+  }, 120_000);
 
-    service = module.get<PostsService>(PostsService);
-    jest.clearAllMocks();
-  });
+  afterAll(() => teardownTestDb(ctx));
+
+  beforeEach(() => cleanDatabase(ctx.prisma));
 
   // ─── create ───────────────────────────────────────────────────────────────
 
   describe('create()', () => {
     it('crée un post si l\'auteur existe', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue(mockAuthor);
-      mockPrisma.post.create.mockResolvedValue(mockPost);
+      const author = await usersService.create({ firstname: 'Alice', lastname: 'A', email: 'alice@test.com' });
+      const post = await service.create({ title: 'Mon article', content: 'Contenu', authorId: author.id });
 
-      const result = await service.create({
-        title: 'Mon article',
-        content: 'Contenu',
-        authorId: 1,
-      });
-
-      expect(result).toEqual(mockPost);
-      expect(mockPrisma.user.findUnique).toHaveBeenCalledWith({ where: { id: 1 } });
+      expect(post.id).toBeDefined();
+      expect(post.title).toBe('Mon article');
+      expect(post.author.id).toBe(author.id);
+      expect(post.deletedAt).toBeNull();
     });
 
     it('lève NotFoundException si auteur inexistant', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue(null);
       await expect(
-        service.create({ title: 'X', content: 'Y', authorId: 99 }),
+        service.create({ title: 'X', content: 'Y', authorId: 99999 }),
       ).rejects.toThrow(NotFoundException);
     });
 
     it('lève NotFoundException si auteur soft-supprimé', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue({
-        ...mockAuthor,
-        deletedAt: new Date(),
-      });
+      const author = await usersService.create({ firstname: 'A', lastname: 'B', email: 'del@test.com' });
+      await usersService.remove(author.id);
       await expect(
-        service.create({ title: 'X', content: 'Y', authorId: 1 }),
+        service.create({ title: 'X', content: 'Y', authorId: author.id }),
       ).rejects.toThrow(NotFoundException);
     });
   });
@@ -91,31 +55,38 @@ describe('PostsService', () => {
 
   describe('findAll()', () => {
     it('ne retourne que les posts actifs', async () => {
-      mockPrisma.post.findMany.mockResolvedValue([mockPost]);
-      mockPrisma.post.count.mockResolvedValue(1);
+      const author = await usersService.create({ firstname: 'A', lastname: 'B', email: 'a@test.com' });
+      await service.create({ title: 'Actif', content: 'C', authorId: author.id });
+      const deleted = await service.create({ title: 'Supprimé', content: 'C', authorId: author.id });
+      await service.remove(deleted.id);
 
       const result = await service.findAll({ limit: 10, offset: 0 });
 
-      expect(result).toEqual({ data: [mockPost], total: 1, limit: 10, offset: 0 });
-      expect(mockPrisma.post.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { deletedAt: null } }),
-      );
+      expect(result.total).toBe(1);
+      expect(result.data[0].title).toBe('Actif');
+    });
+
+    it('retourne la pagination correcte', async () => {
+      const result = await service.findAll({ limit: 5, offset: 0 });
+      expect(result.limit).toBe(5);
+      expect(result.offset).toBe(0);
     });
   });
 
   // ─── findTrashed ──────────────────────────────────────────────────────────
 
   describe('findTrashed()', () => {
-    it('ne retourne que les posts supprimés', async () => {
-      const deleted = { ...mockPost, deletedAt: new Date() };
-      mockPrisma.post.findMany.mockResolvedValue([deleted]);
-      mockPrisma.post.count.mockResolvedValue(1);
+    it('ne retourne que les posts soft-supprimés', async () => {
+      const author = await usersService.create({ firstname: 'A', lastname: 'B', email: 'a@test.com' });
+      await service.create({ title: 'Actif', content: 'C', authorId: author.id });
+      const toDelete = await service.create({ title: 'Supprimé', content: 'C', authorId: author.id });
+      await service.remove(toDelete.id);
 
-      await service.findTrashed({ limit: 10, offset: 0 });
+      const result = await service.findTrashed({ limit: 10, offset: 0 });
 
-      expect(mockPrisma.post.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { deletedAt: { not: null } } }),
-      );
+      expect(result.total).toBe(1);
+      expect(result.data[0].title).toBe('Supprimé');
+      expect(result.data[0].deletedAt).not.toBeNull();
     });
   });
 
@@ -123,22 +94,23 @@ describe('PostsService', () => {
 
   describe('findOne()', () => {
     it('retourne le post s\'il est actif', async () => {
-      mockPrisma.post.findUnique.mockResolvedValue(mockPost);
-      const result = await service.findOne(1);
-      expect(result).toEqual(mockPost);
+      const author = await usersService.create({ firstname: 'A', lastname: 'B', email: 'a@test.com' });
+      const post = await service.create({ title: 'Test', content: 'C', authorId: author.id });
+
+      const found = await service.findOne(post.id);
+      expect(found.id).toBe(post.id);
     });
 
     it('lève NotFoundException si post inexistant', async () => {
-      mockPrisma.post.findUnique.mockResolvedValue(null);
-      await expect(service.findOne(99)).rejects.toThrow(NotFoundException);
+      await expect(service.findOne(99999)).rejects.toThrow(NotFoundException);
     });
 
-    it('lève NotFoundException si post supprimé', async () => {
-      mockPrisma.post.findUnique.mockResolvedValue({
-        ...mockPost,
-        deletedAt: new Date(),
-      });
-      await expect(service.findOne(1)).rejects.toThrow(NotFoundException);
+    it('lève NotFoundException si post soft-supprimé', async () => {
+      const author = await usersService.create({ firstname: 'A', lastname: 'B', email: 'a@test.com' });
+      const post = await service.create({ title: 'Test', content: 'C', authorId: author.id });
+      await service.remove(post.id);
+
+      await expect(service.findOne(post.id)).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -146,15 +118,20 @@ describe('PostsService', () => {
 
   describe('findOneTrashed()', () => {
     it('retourne le post supprimé', async () => {
-      const deleted = { ...mockPost, deletedAt: new Date() };
-      mockPrisma.post.findUnique.mockResolvedValue(deleted);
-      const result = await service.findOneTrashed(1);
-      expect(result).toEqual(deleted);
+      const author = await usersService.create({ firstname: 'A', lastname: 'B', email: 'a@test.com' });
+      const post = await service.create({ title: 'Test', content: 'C', authorId: author.id });
+      await service.remove(post.id);
+
+      const found = await service.findOneTrashed(post.id);
+      expect(found.id).toBe(post.id);
+      expect(found.deletedAt).not.toBeNull();
     });
 
     it('lève NotFoundException si le post n\'est pas supprimé', async () => {
-      mockPrisma.post.findUnique.mockResolvedValue(mockPost); // deletedAt: null
-      await expect(service.findOneTrashed(1)).rejects.toThrow(NotFoundException);
+      const author = await usersService.create({ firstname: 'A', lastname: 'B', email: 'a@test.com' });
+      const post = await service.create({ title: 'Test', content: 'C', authorId: author.id });
+
+      await expect(service.findOneTrashed(post.id)).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -162,17 +139,14 @@ describe('PostsService', () => {
 
   describe('remove()', () => {
     it('marque deletedAt sans supprimer la ligne', async () => {
-      mockPrisma.post.findUnique.mockResolvedValue(mockPost);
-      mockPrisma.post.update.mockResolvedValue({ ...mockPost, deletedAt: new Date() });
+      const author = await usersService.create({ firstname: 'A', lastname: 'B', email: 'a@test.com' });
+      const post = await service.create({ title: 'Test', content: 'C', authorId: author.id });
 
-      await service.remove(1);
+      await service.remove(post.id);
 
-      expect(mockPrisma.post.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: 1 },
-          data: { deletedAt: expect.any(Date) },
-        }),
-      );
+      const raw = await ctx.prisma.post.findUnique({ where: { id: post.id } });
+      expect(raw).not.toBeNull();
+      expect(raw!.deletedAt).not.toBeNull();
     });
   });
 
@@ -180,25 +154,23 @@ describe('PostsService', () => {
 
   describe('restore()', () => {
     it('remet deletedAt à null', async () => {
-      const deleted = { ...mockPost, deletedAt: new Date() };
-      mockPrisma.post.findUnique.mockResolvedValue(deleted);
-      mockPrisma.post.update.mockResolvedValue(mockPost);
+      const author = await usersService.create({ firstname: 'A', lastname: 'B', email: 'a@test.com' });
+      const post = await service.create({ title: 'Test', content: 'C', authorId: author.id });
+      await service.remove(post.id);
 
-      await service.restore(1);
-
-      expect(mockPrisma.post.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: { deletedAt: null } }),
-      );
+      const restored = await service.restore(post.id);
+      expect(restored.deletedAt).toBeNull();
     });
 
     it('lève NotFoundException si post inexistant', async () => {
-      mockPrisma.post.findUnique.mockResolvedValue(null);
-      await expect(service.restore(99)).rejects.toThrow(NotFoundException);
+      await expect(service.restore(99999)).rejects.toThrow(NotFoundException);
     });
 
     it('lève ConflictException si post déjà actif', async () => {
-      mockPrisma.post.findUnique.mockResolvedValue(mockPost);
-      await expect(service.restore(1)).rejects.toThrow(ConflictException);
+      const author = await usersService.create({ firstname: 'A', lastname: 'B', email: 'a@test.com' });
+      const post = await service.create({ title: 'Test', content: 'C', authorId: author.id });
+
+      await expect(service.restore(post.id)).rejects.toThrow(ConflictException);
     });
   });
 });
