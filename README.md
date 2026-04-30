@@ -1,98 +1,254 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# nest-prisma-demo
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+API REST CRUD construite avec **NestJS** + **Prisma** + **PostgreSQL**.  
+Objectif : gérer des utilisateurs (création, lecture, mise à jour, suppression) avec validation des données et pagination.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+---
 
-## Description
+## Stack technique
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+| Outil | Rôle |
+|---|---|
+| NestJS 11 | Framework backend Node.js (architecture modulaire) |
+| Prisma 7 | ORM — accès à la base de données via des types TypeScript |
+| PostgreSQL 15 | Base de données relationnelle |
+| class-validator | Validation automatique des corps de requête (DTO) |
+| Docker / Docker Compose | Lancer la BDD (et l'API) sans rien installer localement |
 
-## Project setup
+---
 
-```bash
-$ npm install
-```
+## Prérequis
 
-## Compile and run the project
+- **Node.js** >= 18
+- **npm** >= 9
+- **Docker** + **Docker Compose** (pour lancer la BDD)
+
+---
+
+## Lancer le projet en local (< 3 min)
+
+### Étape 1 — Installer les dépendances
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+cd nest-prisma-demo
+npm install
 ```
 
-## Run tests
+### Étape 2 — Démarrer la base de données PostgreSQL
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+docker compose up -d postgres
 ```
 
-## Deployment
+Cela lance un conteneur PostgreSQL avec :
+- Utilisateur : `postgres`
+- Mot de passe : `postgres`
+- Base de données : `nestdb`
+- Port exposé : `5432`
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+### Étape 3 — Configurer les variables d'environnement
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+Le fichier `.env` est déjà présent avec les valeurs par défaut :
+
+```env
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/nestdb"
+```
+
+Aucune modification nécessaire si tu utilises Docker Compose.
+
+### Étape 4 — Appliquer les migrations Prisma
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+npx prisma migrate deploy
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+> Cela crée la table `User` dans la base de données.
 
-## Resources
+### Étape 5 — Lancer le serveur
 
-Check out a few resources that may come in handy when working with NestJS:
+```bash
+npm run start:dev
+```
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+L'API est disponible sur : **http://localhost:3003**
 
-## Support
+---
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+## Lancer avec Docker (API + BDD ensemble)
 
-## Stay in touch
+Si tu veux tout lancer dans Docker sans Node.js en local :
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+```bash
+docker compose up --build
+```
 
-## License
+L'API démarre sur le port **3003**, la BDD sur le port **5432**.
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+---
+
+## Structure du projet
+
+```
+src/
+├── main.ts                  # Point d'entrée — démarre NestJS sur le port 3003
+├── app.module.ts            # Module racine
+├── prisma/
+│   └── prisma.service.ts    # Service Prisma partagé (connexion BDD)
+└── users/
+    ├── users.module.ts      # Module Users
+    ├── users.controller.ts  # Routes HTTP (POST, GET, PATCH, DELETE)
+    ├── users.service.ts     # Logique métier
+    └── dto/
+        ├── create-user.dto.ts   # Validation à la création
+        ├── update-user.dto.ts   # Validation à la mise à jour (champs optionnels)
+        └── paginate.dto.ts      # Paramètres de pagination (limit, offset)
+
+prisma/
+└── schema.prisma            # Modèle de données (table User)
+```
+
+---
+
+## Modèle de données
+
+```prisma
+model User {
+  id        Int      @id @default(autoincrement())
+  firstname String
+  lastname  String
+  email     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+```
+
+---
+
+## Endpoints API
+
+Base URL : `http://localhost:3003`
+
+### Créer un utilisateur
+
+```http
+POST /users
+Content-Type: application/json
+
+{
+  "firstname": "Mamadou",
+  "lastname": "Diallo",
+  "email": "mamadou@example.com"
+}
+```
+
+Réponse `201` :
+```json
+{
+  "id": 1,
+  "firstname": "Mamadou",
+  "lastname": "Diallo",
+  "email": "mamadou@example.com",
+  "createdAt": "2026-04-30T10:00:00.000Z",
+  "updatedAt": "2026-04-30T10:00:00.000Z"
+}
+```
+
+---
+
+### Lister tous les utilisateurs (avec pagination)
+
+```http
+GET /users?limit=10&offset=0
+```
+
+Réponse `200` :
+```json
+{
+  "data": [...],
+  "total": 42,
+  "limit": 10,
+  "offset": 0
+}
+```
+
+---
+
+### Récupérer un utilisateur par ID
+
+```http
+GET /users/:id
+```
+
+Réponse `200` ou `404` si introuvable.
+
+---
+
+### Mettre à jour un utilisateur
+
+```http
+PATCH /users/:id
+Content-Type: application/json
+
+{
+  "firstname": "Nouveau prénom"
+}
+```
+
+Tous les champs sont optionnels (PartialType du DTO de création).
+
+---
+
+### Supprimer un utilisateur
+
+```http
+DELETE /users/:id
+```
+
+Réponse `200` avec l'objet supprimé, ou `404` si introuvable.
+
+---
+
+## Validation automatique des données
+
+NestJS est configuré avec `ValidationPipe` global :
+
+- `whitelist: true` — les champs non déclarés dans le DTO sont automatiquement ignorés
+- `forbidNonWhitelisted: true` — une erreur est renvoyée si un champ inconnu est envoyé
+- `transform: true` — les types sont automatiquement convertis (ex: `"1"` → `1`)
+
+Règles de validation sur `CreateUserDto` :
+- `firstname` : string, min 2 chars, max 100 chars, obligatoire
+- `lastname` : string, min 2 chars, max 100 chars, obligatoire
+- `email` : format email valide, max 150 chars, unique en BDD
+
+---
+
+## Scripts disponibles
+
+```bash
+npm run start:dev     # Démarrage en mode watch (rechargement automatique)
+npm run start:prod    # Démarrage en production (depuis /dist)
+npm run build         # Compilation TypeScript → JavaScript
+npm run test          # Tests unitaires (Jest)
+npm run test:e2e      # Tests end-to-end
+npm run lint          # Vérification du code (ESLint + Prettier)
+```
+
+```bash
+npx prisma migrate dev --name <nom>   # Créer une nouvelle migration
+npx prisma migrate deploy             # Appliquer les migrations existantes
+npx prisma studio                     # Interface graphique pour la BDD
+npx prisma generate                   # Régénérer le client Prisma
+```
+
+---
+
+## Erreurs courantes
+
+| Erreur | Cause | Solution |
+|---|---|---|
+| `ECONNREFUSED 5432` | PostgreSQL n'est pas démarré | `docker compose up -d postgres` |
+| `409 Conflict` | Email déjà utilisé | Utiliser un email différent |
+| `404 Not Found` | ID inexistant | Vérifier l'ID dans la BDD |
+| `400 Bad Request` | Champ manquant ou invalide | Lire le message d'erreur de validation |
+| `P1001` Prisma | Impossible de joindre la BDD | Vérifier `DATABASE_URL` dans `.env` |
