@@ -6,6 +6,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { PaginateDto } from './dto/paginate.dto';
 
 @Injectable()
 export class UsersService {
@@ -15,15 +16,25 @@ export class UsersService {
     try {
       return await this.prisma.user.create({ data: dto });
     } catch (e: unknown) {
-      if (typeof e === 'object' && e !== null && 'code' in e && e.code === 'P2002') {
+      if (
+        typeof e === 'object' &&
+        e !== null &&
+        'code' in e &&
+        e.code === 'P2002'
+      ) {
         throw new ConflictException('Cet email est déjà utilisé');
       }
       throw e;
     }
   }
 
-  findAll() {
-    return this.prisma.user.findMany();
+  async findAll(pagination: PaginateDto) {
+    const { limit = 10, offset = 0 } = pagination;
+    const [data, total] = await Promise.all([
+      this.prisma.user.findMany({ skip: offset, take: limit }),
+      this.prisma.user.count(),
+    ]);
+    return { data, total, limit, offset };
   }
 
   async findOne(id: number) {
