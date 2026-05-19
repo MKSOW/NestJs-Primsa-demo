@@ -3,13 +3,11 @@ import {
   IsInt,
   IsNotEmpty,
   IsOptional,
-  IsPositive,
   IsString,
   MaxLength,
   MinLength,
   IsArray,
 } from 'class-validator';
-import { Type } from 'class-transformer';
 import { Trim } from '../../common/decorators';
 
 export class CreatePostDto {
@@ -29,10 +27,9 @@ export class CreatePostDto {
   @IsBoolean({ message: 'published doit être un booléen' })
   published?: boolean = false;
 
-  @Type(() => Number)
-  @IsInt({ message: "L'identifiant de l'auteur doit être un entier" })
-  @IsPositive({ message: "L'identifiant de l'auteur doit être positif" })
-  authorId!: number;
+  @IsString({ message: "L'identifiant de l'auteur doit être une chaîne" })
+  @IsNotEmpty({ message: "L'identifiant de l'auteur est obligatoire" })
+  authorId!: string;
 
   @IsOptional()
   @IsArray({ message: 'categoryIds doit être un tableau' })
