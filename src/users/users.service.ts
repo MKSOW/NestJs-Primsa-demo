@@ -41,7 +41,7 @@ export class UsersService {
     return { data, total, limit, offset };
   }
 
-  async findOne(id: number) {
+  async findOne(id: string) {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user || user.deletedAt) {
       throw new NotFoundException(`User #${id} introuvable`);
@@ -49,7 +49,7 @@ export class UsersService {
     return user;
   }
 
-  async update(id: number, dto: UpdateUserDto) {
+  async update(id: string, dto: UpdateUserDto) {
     await this.findOne(id);
     try {
       return await this.prisma.user.update({ where: { id }, data: dto });
@@ -66,7 +66,7 @@ export class UsersService {
     }
   }
 
-  async remove(id: number) {
+  async remove(id: string) {
     await this.findOne(id);
     return this.prisma.user.update({
       where: { id },
@@ -74,7 +74,7 @@ export class UsersService {
     });
   }
 
-  async restore(id: number) {
+  async restore(id: string) {
     const user = await this.prisma.user.findUnique({ where: { id } });
     if (!user) throw new NotFoundException(`User #${id} introuvable`);
     if (!user.deletedAt) {
