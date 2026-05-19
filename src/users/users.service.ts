@@ -29,14 +29,11 @@ export class UsersService {
   }
 
   async findAll(pagination: PaginateDto) {
-    const { limit = 10, offset = 0 } = pagination;
+    const { limit = 10, offset = 0, role } = pagination;
+    const where = { deletedAt: null, ...(role && { role }) };
     const [data, total] = await Promise.all([
-      this.prisma.user.findMany({
-        where: { deletedAt: null },
-        skip: offset,
-        take: limit,
-      }),
-      this.prisma.user.count({ where: { deletedAt: null } }),
+      this.prisma.user.findMany({ where, skip: offset, take: limit }),
+      this.prisma.user.count({ where }),
     ]);
     return { data, total, limit, offset };
   }
