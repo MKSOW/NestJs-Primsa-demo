@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -21,13 +22,8 @@ const POST_INCLUDE = {
 export class PostsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(dto: CreatePostDto) {
-    const { categoryIds, authorId, ...rest } = dto;
-
-    const author = await this.prisma.user.findUnique({ where: { id: authorId } });
-    if (!author || author.deletedAt) {
-      throw new NotFoundException(`Auteur #${authorId} introuvable`);
-    }
+  async create(dto: CreatePostDto, authorId: string) {
+    const { categoryIds, ...rest } = dto;
 
     return this.prisma.post.create({
       data: {
@@ -67,22 +63,19 @@ export class PostsService {
     return post;
   }
 
-  async update(id: number, dto: UpdatePostDto) {
-    await this.findOne(id);
-    const { categoryIds, authorId, ...rest } = dto;
+  async update(id: number, dto: UpdatePostDto, currentUserId: string, currentUserRole: string) {
+    const post = await this.findOne(id);
 
-    if (authorId !== undefined) {
-      const author = await this.prisma.user.findUnique({ where: { id: authorId } });
-      if (!author || author.deletedAt) {
-        throw new NotFoundException(`Auteur #${authorId} introuvable`);
-      }
+    if (post.authorId !== currentUserId && currentUserRole !== 'admin') {
+      throw new ForbiddenException("Vous ne pouvez modifier que vos propres posts");
     }
+
+    const { categoryIds, ...rest } = dto;
 
     return this.prisma.post.update({
       where: { id },
       data: {
         ...rest,
-        ...(authorId !== undefined && { author: { connect: { id: authorId } } }),
         ...(categoryIds !== undefined && {
           categories: { set: categoryIds.map((cid) => ({ id: cid })) },
         }),
@@ -91,8 +84,13 @@ export class PostsService {
     });
   }
 
-  async remove(id: number) {
-    await this.findOne(id);
+  async remove(id: number, currentUserId: string, currentUserRole: string) {
+    const post = await this.findOne(id);
+
+    if (post.authorId !== currentUserId && currentUserRole !== 'admin') {
+      throw new ForbiddenException("Vous ne pouvez supprimer que vos propres posts");
+    }
+
     return this.prisma.post.update({
       where: { id },
       data: { deletedAt: new Date() },
