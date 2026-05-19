@@ -6,13 +6,18 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   HttpCode,
+  UseGuards,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { Paginate } from '../common/decorators';
 import { PaginateDto } from './dto/paginate.dto';
+import { Paginate, Roles } from '../common/decorators';
+import { AuthGuard } from '../common/guards/auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { ParseRolePipe } from '../common/pipes/parse-role.pipe';
 
 @Controller('users')
 export class UsersController {
@@ -24,9 +29,14 @@ export class UsersController {
     return this.usersService.create(dto);
   }
 
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('admin')
   @Get()
-  findAll(@Paginate() pagination: PaginateDto) {
-    return this.usersService.findAll(pagination);
+  findAll(
+    @Paginate() pagination: PaginateDto,
+    @Query('role', ParseRolePipe) role: string | undefined,
+  ) {
+    return this.usersService.findAll({ ...pagination, role: role as any });
   }
 
   @Get(':id')
