@@ -27,10 +27,6 @@ export class CreatePostDto {
   @IsBoolean({ message: 'published doit être un booléen' })
   published?: boolean = false;
 
-  @IsString({ message: "L'identifiant de l'auteur doit être une chaîne" })
-  @IsNotEmpty({ message: "L'identifiant de l'auteur est obligatoire" })
-  authorId!: string;
-
   @IsOptional()
   @IsArray({ message: 'categoryIds doit être un tableau' })
   @IsInt({ each: true, message: 'Chaque categoryId doit être un entier' })
