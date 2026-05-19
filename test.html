@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>BetterAuth - Test OAuth</title>
+  <style>
+    body { font-family: sans-serif; padding: 2rem; }
+    button { padding: 0.5rem 1rem; margin: 0.5rem; cursor: pointer; font-size: 1rem; }
+    pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h2>BetterAuth - Test</h2>
+
+  <button onclick="loginGithub()">Connexion GitHub</button>
+  <button onclick="getSession()">Voir la session</button>
+  <button onclick="logout()">Se déconnecter</button>
+
+  <pre id="result">Résultat ici...</pre>
+
+  <script>
+    const BASE = 'http://localhost:3003/api/auth';
+
+    async function loginGithub() {
+      const res = await fetch(`${BASE}/sign-in/social`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          provider: 'github',
+          callbackURL: 'http://localhost:3003/api/auth/get-session'
+        })
+      });
+      const data = await res.json();
+      document.getElementById('result').textContent = JSON.stringify(data, null, 2);
+      if (data.url) window.location.href = data.url;
+    }
+
+    async function getSession() {
+      const res = await fetch(`${BASE}/get-session`, { credentials: 'include' });
+      const data = await res.json();
+      document.getElementById('result').textContent = JSON.stringify(data, null, 2);
+    }
+
+    async function logout() {
+      const res = await fetch(`${BASE}/sign-out`, {
+        method: 'POST',
+        credentials: 'include'
+      });
+      document.getElementById('result').textContent = 'Déconnecté';
+    }
+  </script>
+</body>
+</html>
