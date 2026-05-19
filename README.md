@@ -1,7 +1,7 @@
 # nest-prisma-demo
 
-API REST CRUD construite avec **NestJS** + **Prisma** + **PostgreSQL**.  
-Objectif : gérer des utilisateurs (création, lecture, mise à jour, suppression) avec validation des données et pagination.
+API REST construite avec **NestJS** + **Prisma** + **PostgreSQL** + **BetterAuth**.  
+Gestion complète d'utilisateurs, posts et catégories avec authentification, rôles et contrôle de propriété.
 
 ---
 
@@ -12,77 +12,61 @@ Objectif : gérer des utilisateurs (création, lecture, mise à jour, suppressio
 | NestJS 11 | Framework backend Node.js (architecture modulaire) |
 | Prisma 7 | ORM — accès à la base de données via des types TypeScript |
 | PostgreSQL 15 | Base de données relationnelle |
+| BetterAuth | Authentification complète (email/password, OAuth) |
 | class-validator | Validation automatique des corps de requête (DTO) |
-| Docker / Docker Compose | Lancer la BDD (et l'API) sans rien installer localement |
+| Docker / Docker Compose | Conteneurisation de l'API et de la BDD |
 
 ---
 
 ## Prérequis
 
-- **Node.js** >= 18
+- **Node.js** >= 20
 - **npm** >= 9
-- **Docker** + **Docker Compose** (pour lancer la BDD)
+- **Docker** + **Docker Compose**
 
 ---
 
-## Lancer le projet en local (< 3 min)
+## Variables d'environnement
 
-### Étape 1 — Installer les dépendances
-
-```bash
-cd nest-prisma-demo
-npm install
-```
-
-### Étape 2 — Démarrer la base de données PostgreSQL
-
-```bash
-docker compose up -d postgres
-```
-
-Cela lance un conteneur PostgreSQL avec :
-- Utilisateur : `postgres`
-- Mot de passe : `postgres`
-- Base de données : `nestdb`
-- Port exposé : `5432`
-
-### Étape 3 — Configurer les variables d'environnement
-
-Le fichier `.env` est déjà présent avec les valeurs par défaut :
+Créer un fichier `.env` à la racine :
 
 ```env
 DATABASE_URL="postgresql://postgres:postgres@localhost:5432/nestdb"
+
+# BetterAuth
+BETTER_AUTH_SECRET="une-chaine-aleatoire-de-32-caracteres-minimum"
+BETTER_AUTH_URL="http://localhost:3003"
+
+# Google OAuth (optionnel — console.cloud.google.com)
+GOOGLE_CLIENT_ID=""
+GOOGLE_CLIENT_SECRET=""
+
+# GitHub OAuth (optionnel — github.com/settings/developers)
+GITHUB_CLIENT_ID=""
+GITHUB_CLIENT_SECRET=""
 ```
-
-Aucune modification nécessaire si tu utilises Docker Compose.
-
-### Étape 4 — Appliquer les migrations Prisma
-
-```bash
-npx prisma migrate deploy
-```
-
-> Cela crée la table `User` dans la base de données.
-
-### Étape 5 — Lancer le serveur
-
-```bash
-npm run start:dev
-```
-
-L'API est disponible sur : **http://localhost:3003**
 
 ---
 
-## Lancer avec Docker (API + BDD ensemble)
+## Lancer le projet
 
-Si tu veux tout lancer dans Docker sans Node.js en local :
+### Option 1 — Docker complet (recommandé)
 
 ```bash
 docker compose up --build
 ```
 
-L'API démarre sur le port **3003**, la BDD sur le port **5432**.
+L'API démarre sur **http://localhost:3003**, la BDD sur le port **5432**.  
+Les migrations Prisma sont appliquées automatiquement au démarrage.
+
+### Option 2 — En local (développement)
+
+```bash
+npm install
+docker compose up -d postgres      # BDD uniquement
+npx prisma migrate deploy          # Appliquer les migrations
+npm run start:dev                  # Serveur avec hot-reload
+```
 
 ---
 
@@ -90,86 +74,19 @@ L'API démarre sur le port **3003**, la BDD sur le port **5432**.
 
 ```
 src/
-├── main.ts                  # Point d'entrée — démarre NestJS sur le port 3003
-├── app.module.ts            # Module racine
-├── prisma/
-│   └── prisma.service.ts    # Service Prisma partagé (connexion BDD)
-└── users/
-    ├── users.module.ts      # Module Users
-    ├── users.controller.ts  # Routes HTTP (POST, GET, PATCH, DELETE)
-    ├── users.service.ts     # Logique métier
-    └── dto/
-        ├── create-user.dto.ts   # Validation à la création
-        ├── update-user.dto.ts   # Validation à la mise à jour (champs optionnels)
-        └── paginate.dto.ts      # Paramètres de pagination (limit, offset)
-
-prisma/
-└── schema.prisma            # Modèle de données (table User)
-```
-
----
-
-## Modèle de données
-
-```prisma
-// Un utilisateur peut avoir plusieurs posts
-model User {
-  id        Int      @id @default(autoincrement())
-  firstname String
-  lastname  String
-  email     String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  posts     Post[]
-}
-
-// Un post appartient à un auteur (User) et peut avoir plusieurs catégories
-model Post {
-  id         Int        @id @default(autoincrement())
-  title      String
-  content    String
-  published  Boolean    @default(false)
-  createdAt  DateTime   @default(now())
-  updatedAt  DateTime   @updatedAt
-  authorId   Int
-  author     User       @relation(fields: [authorId], references: [id])
-  categories Category[]
-}
-
-// Une catégorie peut être assignée à plusieurs posts (many-to-many implicite)
-model Category {
-  id    Int    @unique
-  name  String @unique
-  posts Post[]
-}
-```
-
-### Schéma des relations
-
-```
-User  ──< Post >──< Category
-(1)      (many)   (many)
-```
-
-- **User → Post** : relation **one-to-many** (un utilisateur écrit plusieurs posts)
-- **Post ↔ Category** : relation **many-to-many** (Prisma génère automatiquement une table de jonction `_CategoryToPost`)
-
----
-
-## Structure du projet (mise à jour)
-
-```
-src/
-├── main.ts
-├── app.module.ts
+├── main.ts                        # Point d'entrée — montage BetterAuth + NestJS
+├── app.module.ts                  # Module racine
+├── auth/
+│   ├── auth.config.ts             # Configuration BetterAuth (singleton)
+│   └── auth.module.ts             # Module NestJS Auth
 ├── prisma/
 │   ├── prisma.module.ts
-│   └── prisma.service.ts
+│   └── prisma.service.ts          # Connexion BDD partagée
 ├── users/
 │   ├── dto/
 │   │   ├── create-user.dto.ts
 │   │   ├── update-user.dto.ts
-│   │   └── paginate.dto.ts        # Réutilisé par posts et categories
+│   │   └── paginate.dto.ts        # Pagination + filtre rôle
 │   ├── users.controller.ts
 │   ├── users.service.ts
 │   └── users.module.ts
@@ -180,13 +97,130 @@ src/
 │   ├── posts.controller.ts
 │   ├── posts.service.ts
 │   └── posts.module.ts
-└── categories/
-    ├── dto/
-    │   ├── create-category.dto.ts
-    │   └── update-category.dto.ts
-    ├── categories.controller.ts
-    ├── categories.service.ts
-    └── categories.module.ts
+├── categories/
+│   ├── dto/
+│   │   ├── create-category.dto.ts
+│   │   └── update-category.dto.ts
+│   ├── categories.controller.ts
+│   ├── categories.service.ts
+│   └── categories.module.ts
+└── common/
+    ├── decorators/
+    │   ├── current-user.decorator.ts  # @CurrentUser()
+    │   ├── roles.decorator.ts         # @Roles('admin')
+    │   ├── param-id.decorator.ts      # @ParamId()
+    │   ├── paginate.decorator.ts      # @Paginate()
+    │   └── trim.decorator.ts          # @Trim()
+    ├── guards/
+    │   ├── auth.guard.ts              # Vérifie la session BetterAuth
+    │   └── roles.guard.ts             # Vérifie le rôle de l'utilisateur
+    └── pipes/
+        └── parse-role.pipe.ts         # Valide que ?role= est "admin" ou "user"
+```
+
+---
+
+## Modèle de données
+
+```prisma
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  image         String?
+  role          String    @default("user")  // "user" | "admin"
+  firstname     String?
+  lastname      String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+  posts         Post[]
+  sessions      Session[]
+  accounts      Account[]
+}
+
+model Post {
+  id         Int        @id @default(autoincrement())
+  title      String
+  content    String
+  published  Boolean    @default(false)
+  authorId   String                          // clé étrangère vers User
+  author     User       @relation(...)
+  categories Category[]
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  deletedAt  DateTime?
+}
+
+// Session, Account, Verification — gérés par BetterAuth
+```
+
+### Relations
+
+```
+User  ──< Post >──< Category
+(1)      (many)    (many)
+```
+
+---
+
+## Authentification (BetterAuth)
+
+Toutes les routes d'auth sont montées sur `/api/auth`.
+
+### Inscription
+
+```http
+POST /api/auth/sign-up/email
+Content-Type: application/json
+
+{
+  "email": "mamadou@example.com",
+  "password": "Password123!",
+  "name": "Mamadou Diallo"
+}
+```
+
+### Connexion email / mot de passe
+
+```http
+POST /api/auth/sign-in/email
+Content-Type: application/json
+
+{
+  "email": "mamadou@example.com",
+  "password": "Password123!"
+}
+```
+
+Réponse : token de session + objet user. Un cookie `better-auth.session_token` est automatiquement posé.
+
+### Connexion OAuth (GitHub / Google)
+
+```http
+POST /api/auth/sign-in/social
+Content-Type: application/json
+
+{
+  "provider": "github",
+  "callbackURL": "http://localhost:3003/api/auth/get-session"
+}
+```
+
+Réponse : `{ "url": "https://github.com/login/...", "redirect": true }` — ouvrir l'URL dans le navigateur.
+
+### Session courante
+
+```http
+GET /api/auth/get-session
+```
+
+### Déconnexion
+
+```http
+POST /api/auth/sign-out
+Origin: http://localhost:3003
 ```
 
 ---
@@ -195,89 +229,49 @@ src/
 
 Base URL : `http://localhost:3003`
 
-### Créer un utilisateur
+### Authentification requise
 
-```http
-POST /users
-Content-Type: application/json
-
-{
-  "firstname": "Mamadou",
-  "lastname": "Diallo",
-  "email": "mamadou@example.com"
-}
-```
-
-Réponse `201` :
-```json
-{
-  "id": 1,
-  "firstname": "Mamadou",
-  "lastname": "Diallo",
-  "email": "mamadou@example.com",
-  "createdAt": "2026-04-30T10:00:00.000Z",
-  "updatedAt": "2026-04-30T10:00:00.000Z"
-}
-```
+Les routes marquées 🔒 nécessitent un cookie de session valide.  
+Les routes marquées 👑 nécessitent le rôle `admin`.
 
 ---
 
-### Lister tous les utilisateurs (avec pagination)
+### Users
+
+| Méthode | Route | Auth | Description |
+|---|---|---|---|
+| `POST` | `/users` | — | Créer un utilisateur |
+| `GET` | `/users` | 🔒 👑 | Lister tous les utilisateurs (admin uniquement) |
+| `GET` | `/users?role=admin` | 🔒 👑 | Filtrer par rôle |
+| `GET` | `/users/:id` | — | Récupérer un utilisateur |
+| `PATCH` | `/users/:id` | — | Mettre à jour un utilisateur |
+| `DELETE` | `/users/:id` | — | Soft-supprimer un utilisateur |
+| `PATCH` | `/users/:id/restore` | — | Restaurer un utilisateur supprimé |
+
+#### Filtre par rôle
 
 ```http
-GET /users?limit=10&offset=0
+GET /users?role=admin&limit=10&offset=0
 ```
 
-Réponse `200` :
-```json
-{
-  "data": [...],
-  "total": 42,
-  "limit": 10,
-  "offset": 0
-}
-```
-
----
-
-### Récupérer un utilisateur par ID
-
-```http
-GET /users/:id
-```
-
-Réponse `200` ou `404` si introuvable.
-
----
-
-### Mettre à jour un utilisateur
-
-```http
-PATCH /users/:id
-Content-Type: application/json
-
-{
-  "firstname": "Nouveau prénom"
-}
-```
-
-Tous les champs sont optionnels (PartialType du DTO de création).
-
----
-
-### Supprimer un utilisateur
-
-```http
-DELETE /users/:id
-```
-
-Réponse `200` avec l'objet supprimé, ou `404` si introuvable.
-
----
+Valeurs acceptées pour `role` : `admin`, `user`. Toute autre valeur retourne une `400 Bad Request`.
 
 ---
 
 ### Posts
+
+| Méthode | Route | Auth | Description |
+|---|---|---|---|
+| `POST` | `/posts` | 🔒 | Créer un post (auteur = utilisateur connecté) |
+| `GET` | `/posts` | — | Lister tous les posts |
+| `GET` | `/posts/:id` | — | Récupérer un post |
+| `PATCH` | `/posts/:id` | 🔒 propriétaire ou 👑 | Mettre à jour un post |
+| `DELETE` | `/posts/:id` | 🔒 propriétaire ou 👑 | Soft-supprimer un post |
+| `PATCH` | `/posts/:id/restore` | — | Restaurer un post supprimé |
+| `GET` | `/posts/trash` | — | Lister les posts supprimés |
+| `GET` | `/posts/trash/:id` | — | Récupérer un post supprimé |
+
+> **Règle de propriété** : seul le créateur du post peut le modifier ou le supprimer. Un `admin` peut modifier/supprimer n'importe quel post. Tout autre utilisateur reçoit une `403 Forbidden`.
 
 #### Créer un post
 
@@ -289,245 +283,102 @@ Content-Type: application/json
   "title": "Mon premier article",
   "content": "Contenu de l'article...",
   "published": true,
-  "authorId": 1,
   "categoryIds": [1, 2]
 }
 ```
 
-Réponse `201` — le post avec son auteur et ses catégories inclus (jointure) :
-```json
-{
-  "id": 1,
-  "title": "Mon premier article",
-  "content": "Contenu de l'article...",
-  "published": true,
-  "authorId": 1,
-  "author": { "id": 1, "firstname": "Mamadou", "lastname": "Diallo", "email": "mamadou@example.com" },
-  "categories": [{ "id": 1, "name": "Tech" }, { "id": 2, "name": "NestJS" }],
-  "createdAt": "...",
-  "updatedAt": "..."
-}
-```
-
-#### Lister tous les posts (avec pagination)
-
-```http
-GET /posts?limit=10&offset=0
-```
-
-#### Récupérer un post par ID
-
-```http
-GET /posts/:id
-```
-
-#### Mettre à jour un post (champs optionnels)
-
-```http
-PATCH /posts/:id
-Content-Type: application/json
-
-{
-  "published": false,
-  "categoryIds": [3]
-}
-```
-
-> `categoryIds` **remplace** toutes les catégories existantes du post par les nouvelles.
-
-#### Supprimer un post
-
-```http
-DELETE /posts/:id
-```
+> `authorId` n'est plus fourni dans le body — il est automatiquement extrait de la session.
 
 ---
 
 ### Categories
 
-#### Créer une catégorie
+| Méthode | Route | Description |
+|---|---|---|
+| `POST` | `/categories` | Créer une catégorie |
+| `GET` | `/categories` | Lister toutes les catégories |
+| `GET` | `/categories/:id` | Récupérer une catégorie |
+| `PATCH` | `/categories/:id` | Mettre à jour une catégorie |
+| `DELETE` | `/categories/:id` | Supprimer une catégorie |
 
-```http
-POST /categories
-Content-Type: application/json
+---
 
-{ "name": "Tech" }
-```
+## Guards et sécurité
 
-Réponse `201` — la catégorie avec la liste de ses posts :
-```json
-{
-  "id": 1,
-  "name": "Tech",
-  "posts": []
+### AuthGuard
+
+Vérifie que la requête contient une session BetterAuth valide.  
+Injecte l'utilisateur connecté dans `req.user` — accessible via `@CurrentUser()`.
+
+```typescript
+@UseGuards(AuthGuard)
+@Get('profil')
+getProfil(@CurrentUser() user) {
+  return user;
 }
 ```
 
-#### Lister toutes les catégories
+### RolesGuard
 
-```http
-GET /categories?limit=10&offset=0
+Vérifie que `req.user.role` correspond au rôle requis.  
+Toujours utilisé **après** `AuthGuard`.
+
+```typescript
+@UseGuards(AuthGuard, RolesGuard)
+@Roles('admin')
+@Delete(':id')
+remove() { ... }
 ```
 
-Chaque catégorie inclut ses posts et l'auteur de chaque post (double jointure).
+### ParseRolePipe
 
-#### Récupérer une catégorie par ID
+Valide les query params de type rôle. Rejette les valeurs inconnues avec une `400`.
 
-```http
-GET /categories/:id
-```
-
-#### Mettre à jour une catégorie
-
-```http
-PATCH /categories/:id
-Content-Type: application/json
-
-{ "name": "Backend" }
-```
-
-#### Supprimer une catégorie
-
-```http
-DELETE /categories/:id
+```typescript
+@Get()
+findAll(@Query('role', ParseRolePipe) role: string) { ... }
 ```
 
 ---
 
-## Validation automatique des données
+## Codes de réponse
 
-NestJS est configuré avec `ValidationPipe` global :
-
-- `whitelist: true` — les champs non déclarés dans le DTO sont automatiquement ignorés
-- `forbidNonWhitelisted: true` — une erreur est renvoyée si un champ inconnu est envoyé
-- `transform: true` — les types sont automatiquement convertis (ex: `"1"` → `1`)
-
-Règles de validation sur `CreateUserDto` et les autres DTOs :
-**User** : `firstname` (min 2 / max 100), `lastname` (min 2 / max 100), `email` (format valide, unique)
-
-**Post** : `title` (min 3 / max 200), `content` (non vide), `authorId` (entier positif), `categoryIds` (tableau d'entiers, optionnel), `published` (booléen, optionnel)
-
-**Category** : `name` (min 2 / max 100, unique)
-
----
-
-## Tests avec vraie base de données (Testcontainers)
-
-### Philosophie : pourquoi pas de mocks ?
-
-Les tests utilisent **Testcontainers** pour démarrer un vrai conteneur PostgreSQL éphémère à chaque suite de tests, au lieu de mocker PrismaService.
-
-**Pourquoi cette approche est supérieure aux mocks :**
-
-| Mock Prisma | Vraie BDD (Testcontainers) |
+| Code | Signification |
 |---|---|
-| `mockResolvedValue({...})` retourne ce qu'on lui dit | Exécute la vraie requête SQL |
-| Ne vérifie pas les contraintes du schéma | La contrainte `@unique` est vraiment testée |
-| Si on retire `@unique` du schéma, le test continue de passer | Le test échoue immédiatement |
-| Les relations FK ne sont pas vérifiées | Les FK et les cascades sont réelles |
+| `200` | Succès |
+| `201` | Ressource créée |
+| `400` | Données invalides (validation DTO ou pipe) |
+| `401` | Non authentifié (session manquante ou expirée) |
+| `403` | Accès refusé (rôle insuffisant ou non propriétaire) |
+| `404` | Ressource introuvable |
+| `409` | Conflit (email ou nom déjà utilisé) |
 
-> **Exemple concret** : le test `lève ConflictException si email déjà utilisé` avec un mock se contente de simuler l'erreur P2002. Avec Testcontainers, si un développeur retire accidentellement `@unique` du champ `email` dans le schéma Prisma, le test **détecte vraiment la régression**.
+---
 
-### Prérequis pour lancer les tests
-
-- **Docker** doit être démarré (Testcontainers démarre un conteneur automatiquement)
-- Aucune base de données locale nécessaire — tout est géré par Testcontainers
-
-### Lancer les tests
+## Tests
 
 ```bash
-npm test                    # Tous les tests (Jest)
+npm test                    # Tous les tests (Jest + Testcontainers)
 npm run test:cov            # Avec couverture de code
 ```
 
-```bash
-# Lancer un seul fichier de test (plus rapide pendant le développement)
-npx jest --testPathPatterns="users.service.spec" --runInBand
-npx jest --testPathPatterns="users.controller.spec" --runInBand
-npx jest --testPathPatterns="posts.service.spec" --runInBand
-npx jest --testPathPatterns="categories.service.spec" --runInBand
-```
-
-> `--runInBand` force l'exécution séquentielle des tests dans un même processus Node.js, ce qui évite les conflits entre conteneurs Docker lancés en parallèle.
-
-### Architecture des tests
-
-```
-src/
-├── test/
-│   └── db.helper.ts              # Helper partagé — démarre le conteneur, applique les migrations
-├── app.controller.spec.ts        # Test simple (pas de BDD — endpoint /health)
-├── users/
-│   ├── users.service.spec.ts     # Tests service Users (vraie BDD)
-│   └── users.controller.spec.ts  # Tests contrôleur Users (vraie BDD)
-├── posts/
-│   └── posts.service.spec.ts     # Tests service Posts (vraie BDD)
-└── categories/
-    └── categories.service.spec.ts # Tests service Categories (vraie BDD)
-```
-
-Le fichier `src/test/db.helper.ts` expose trois fonctions réutilisées dans chaque suite :
-
-| Fonction | Rôle | Appelée dans |
-|---|---|---|
-| `setupTestDb()` | Démarre le conteneur PostgreSQL, applique les migrations, boot NestJS | `beforeAll` |
-| `teardownTestDb(ctx)` | Arrête le module NestJS et le conteneur | `afterAll` |
-| `cleanDatabase(prisma)` | Vide toutes les tables (ordre FK respecté) | `beforeEach` |
-
-### Cycle de vie d'un test (suites avec BDD)
-
-```
-beforeAll  → démarre 1 conteneur PostgreSQL (postgres:16-alpine)
-           → npx prisma migrate deploy (applique les migrations réelles)
-           → boot du module NestJS de test
-
-beforeEach → cleanDatabase() → vide post → user → category
-             (garantit l'isolation entre chaque it())
-
-afterAll   → module.close() + container.stop()
-```
-
-### Couverture des scénarios testés
-
-**UsersService & UsersController** :
-- `create` — création réussie, `ConflictException` si email dupliqué (contrainte `@unique` réelle)
-- `findAll` — pagination, exclusion des soft-supprimés
-- `findOne` — succès, `NotFoundException` si inexistant ou soft-supprimé
-- `update` — mise à jour réussie, `NotFoundException`, `ConflictException` sur email dupliqué
-- `remove` — soft delete (marque `deletedAt`), `NotFoundException`
-- `restore` — remet `deletedAt` à null, `NotFoundException`, `ConflictException` si déjà actif
-
-**PostsService** :
-- `create` — succès avec auteur, `NotFoundException` si auteur inexistant ou soft-supprimé
-- `findAll` / `findTrashed` — pagination, séparation actifs/supprimés
-- `findOne` / `findOneTrashed` — accès ciblé, erreurs correctes
-- `remove` — soft delete, `NotFoundException`
-- `restore` — `NotFoundException`, `ConflictException` si déjà actif
-
-**CategoriesService** :
-- `create` — succès, `ConflictException` si nom dupliqué
-- `findAll` — pagination correcte
-- `findOne` — succès, `NotFoundException`
-- `update` — succès, `NotFoundException`, `ConflictException` sur nom dupliqué
-- `remove` — suppression définitive (hard delete), `NotFoundException`
+Les tests utilisent **Testcontainers** — un vrai PostgreSQL éphémère est démarré automatiquement. Docker doit être actif.
 
 ---
 
 ## Scripts disponibles
 
 ```bash
-npm run start:dev     # Démarrage en mode watch (rechargement automatique)
-npm run start:prod    # Démarrage en production (depuis /dist)
-npm run build         # Compilation TypeScript → JavaScript
-npm run test          # Tests (Jest + Testcontainers, ~30s au démarrage)
-npm run test:e2e      # Tests end-to-end
-npm run lint          # Vérification du code (ESLint + Prettier)
+npm run start:dev     # Développement avec hot-reload
+npm run build         # Compilation TypeScript
+npm run lint          # ESLint + Prettier
+npm test              # Tests
 ```
 
 ```bash
-npx prisma migrate dev --name <nom>   # Créer une nouvelle migration
-npx prisma migrate deploy             # Appliquer les migrations existantes
-npx prisma studio                     # Interface graphique pour la BDD
+npx prisma migrate dev --name <nom>   # Nouvelle migration
+npx prisma migrate deploy             # Appliquer les migrations
+npx prisma studio                     # Interface graphique BDD
 npx prisma generate                   # Régénérer le client Prisma
 ```
 
@@ -537,10 +388,11 @@ npx prisma generate                   # Régénérer le client Prisma
 
 | Erreur | Cause | Solution |
 |---|---|---|
-| `ECONNREFUSED 5432` | PostgreSQL n'est pas démarré | `docker compose up -d postgres` |
-| `409 Conflict` | Email déjà utilisé | Utiliser un email différent |
-| `404 Not Found` | ID inexistant | Vérifier l'ID dans la BDD |
-| `400 Bad Request` | Champ manquant ou invalide | Lire le message d'erreur de validation |
-| `P1001` Prisma | Impossible de joindre la BDD | Vérifier `DATABASE_URL` dans `.env` |
-| Tests lents (~30s) | Testcontainers tire l'image Docker au premier run | Normal — Docker met en cache l'image ensuite |
-| `Cannot connect to the Docker daemon` | Docker n'est pas démarré | Démarrer Docker Desktop / le service Docker |
+| `ECONNREFUSED 5432` | PostgreSQL non démarré | `docker compose up -d postgres` |
+| `401 Unauthorized` | Session manquante | Se connecter via `/api/auth/sign-in/email` |
+| `403 Forbidden` | Rôle insuffisant ou non propriétaire | Vérifier le rôle ou l'ownership du post |
+| `400 Bad Request` | Champ invalide ou rôle inconnu | Lire le message d'erreur |
+| `409 Conflict` | Email ou nom déjà utilisé | Utiliser une valeur unique |
+| `404 Not Found` | ID inexistant | Vérifier l'ID |
+| `Missing or null Origin` | Header `Origin` absent | Ajouter `Origin: http://localhost:3003` |
+| Tests lents (~30s) | Testcontainers tire l'image Docker | Normal au premier lancement |
