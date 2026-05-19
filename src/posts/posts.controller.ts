@@ -6,21 +6,24 @@ import {
   Delete,
   Body,
   HttpCode,
+  UseGuards,
 } from '@nestjs/common';
 import { PostsService } from './posts.service';
 import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
 import { PaginateDto } from '../users/dto/paginate.dto';
-import { ParamId, Paginate } from '../common/decorators';
+import { ParamId, Paginate, CurrentUser } from '../common/decorators';
+import { AuthGuard } from '../common/guards/auth.guard';
 
 @Controller('posts')
 export class PostsController {
   constructor(private readonly postsService: PostsService) {}
 
+  @UseGuards(AuthGuard)
   @Post()
   @HttpCode(201)
-  create(@Body() dto: CreatePostDto) {
-    return this.postsService.create(dto);
+  create(@Body() dto: CreatePostDto, @CurrentUser() user: any) {
+    return this.postsService.create(dto, user.id);
   }
 
   @Get()
@@ -28,7 +31,6 @@ export class PostsController {
     return this.postsService.findAll(pagination);
   }
 
-  // Doit être AVANT @Get(':id') — sinon NestJS interprète "trash" comme un id
   @Get('trash')
   findTrashed(@Paginate() pagination: PaginateDto) {
     return this.postsService.findTrashed(pagination);
@@ -44,14 +46,20 @@ export class PostsController {
     return this.postsService.findOne(id);
   }
 
+  @UseGuards(AuthGuard)
   @Patch(':id')
-  update(@ParamId() id: number, @Body() dto: UpdatePostDto) {
-    return this.postsService.update(id, dto);
+  update(
+    @ParamId() id: number,
+    @Body() dto: UpdatePostDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.postsService.update(id, dto, user.id, user.role);
   }
 
+  @UseGuards(AuthGuard)
   @Delete(':id')
-  remove(@ParamId() id: number) {
-    return this.postsService.remove(id);
+  remove(@ParamId() id: number, @CurrentUser() user: any) {
+    return this.postsService.remove(id, user.id, user.role);
   }
 
   @Patch(':id/restore')
