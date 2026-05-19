@@ -1,6 +1,7 @@
 import {
   IsEmail,
   IsNotEmpty,
+  IsOptional,
   IsString,
   MinLength,
   MaxLength,
@@ -9,18 +10,25 @@ import { Trim } from '../../common/decorators';
 
 export class CreateUserDto {
   @Trim()
-  @IsString({ message: 'Le prénom doit être une chaîne de caractères' })
-  @IsNotEmpty({ message: 'Le prénom est obligatoire' })
-  @MinLength(2, { message: 'Le prénom doit contenir au moins 2 caractères' })
-  @MaxLength(100, { message: 'Le prénom ne peut pas dépasser 100 caractères' })
-  firstname!: string;
-
-  @Trim()
   @IsString({ message: 'Le nom doit être une chaîne de caractères' })
   @IsNotEmpty({ message: 'Le nom est obligatoire' })
   @MinLength(2, { message: 'Le nom doit contenir au moins 2 caractères' })
-  @MaxLength(100, { message: 'Le nom ne peut pas dépasser 100 caractères' })
-  lastname!: string;
+  @MaxLength(200, { message: 'Le nom ne peut pas dépasser 200 caractères' })
+  name!: string;
+
+  @Trim()
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(100)
+  firstname?: string;
+
+  @Trim()
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(100)
+  lastname?: string;
 
   @Trim()
   @IsEmail({}, { message: "L'adresse email est invalide" })
